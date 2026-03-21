@@ -49,12 +49,12 @@ spark = (SparkSession
 )
 sc = spark.sparkContext
 spark.sparkContext.setLogLevel("WARN")
-print("✅ Spark démarré :", spark.version)
+print("Spark demarre :", spark.version)
 
 # ─────────────────────────────────────────────
 # 3. CHARGEMENT DES IMAGES DEPUIS S3
 # ─────────────────────────────────────────────
-print("📂 Chargement des images depuis S3...")
+print("Chargement des images depuis S3...")
 
 images = spark.read.format("binaryFile") \
     .option("pathGlobFilter", "*.jpg") \
@@ -70,7 +70,7 @@ print(images.select('path', 'label').show(5, False))
 # ─────────────────────────────────────────────
 # 4. BROADCAST DES POIDS MOBILENETV2
 # ─────────────────────────────────────────────
-print("📡 Chargement et broadcast des poids MobileNetV2...")
+print("Chargement et broadcast des poids MobileNetV2...")
 
 model = MobileNetV2(weights='imagenet',
                     include_top=True,
@@ -80,14 +80,14 @@ new_model = Model(inputs=model.input,
                   outputs=model.layers[-2].output)
 
 brodcast_weights = sc.broadcast(new_model.get_weights())
-print("✅ Poids broadcastés")
+print("Poids broadcastes")
 
 # ─────────────────────────────────────────────
 # 5. FONCTIONS DE PREPROCESSING ET FEATURISATION
 # ─────────────────────────────────────────────
 def model_fn():
     """
-    Reconstruit MobileNetV2 sur chaque worker avec les poids broadcastés.
+    Reconstruit MobileNetV2 sur chaque worker avec les poids broadcastes.
     """
     model = MobileNetV2(weights='imagenet',
                         include_top=True,
@@ -102,7 +102,7 @@ def model_fn():
 
 def preprocess(content):
     """
-    Prétraite les bytes d'une image pour la prédiction.
+    Pretraite les bytes d'une image pour la prediction.
     """
     img = Image.open(io.BytesIO(content)).resize([224, 224])
     arr = img_to_array(img)
@@ -129,7 +129,7 @@ def featurize_udf(content_series_iter):
 # ─────────────────────────────────────────────
 # 6. EXTRACTION DES FEATURES (MOBILENETV2)
 # ─────────────────────────────────────────────
-print("⚙️  Extraction des features MobileNetV2...")
+print("Extraction des features MobileNetV2...")
 
 features_df = images.repartition(24).select(
     col("path"),
@@ -137,14 +137,14 @@ features_df = images.repartition(24).select(
     featurize_udf("content").alias("features")
 )
 
-print("✅ Features extraites")
+print("Features extraites")
 
 # ─────────────────────────────────────────────
 # 7. STANDARDSCALER + PCA
 # ─────────────────────────────────────────────
-print("📏 StandardScaler + PCA...")
+print("StandardScaler + PCA...")
 
-# Conversion array<float> → vecteur Spark ML
+# Conversion array<float> -> vecteur Spark ML
 array_to_vector = udf(lambda arr: Vectors.dense(arr), VectorUDT())
 features_df = features_df.withColumn("features_vec", array_to_vector(col("features")))
 features_df.cache()
@@ -165,14 +165,14 @@ pca_model = pca.fit(df_scaled)
 df_pca = pca_model.transform(df_scaled)
 
 explained = float(sum(pca_model.explainedVariance))
-print(f"✅ PCA terminée — variance expliquée : {explained:.1%} avec 50 composantes")
+print(f"PCA terminee — variance expliquee : {explained:.1%} avec 50 composantes")
 
 # ─────────────────────────────────────────────
 # 8. EXPORT PARQUET VERS S3
 # ─────────────────────────────────────────────
-print(f"💾 Export Parquet → {PATH_Result}")
+print(f"Export Parquet -> {PATH_Result}")
 
-# Conversion vecteur PCA → array pour export
+# Conversion vecteur PCA -> array pour export
 vec_to_array = udf(lambda v: v.toArray().tolist(), ArrayType(FloatType()))
 
 df_export = df_pca.select(
@@ -184,14 +184,14 @@ df_export = df_pca.select(
 
 df_export.write.mode("overwrite").parquet(PATH_Result)
 
-print("✅ Parquet exporté sur S3 !")
+print("Parquet exporte sur S3.")
 
 # ─────────────────────────────────────────────
 # 9. VALIDATION
 # ─────────────────────────────────────────────
 df_check = spark.read.parquet(PATH_Result)
-print(f"\n📊 Résumé : {df_check.count()} lignes, {len(df_check.columns)} colonnes")
+print(f"Résumé : {df_check.count()} lignes, {len(df_check.columns)} colonnes")
 df_check.show(3, truncate=50)
 
 spark.stop()
-print("\n🎉 Pipeline complet ! Résultats dans s3://p8-fruits-bs/Results")
+print("Pipeline complet. Resultats dans s3://p8-fruits-bs/Results")
