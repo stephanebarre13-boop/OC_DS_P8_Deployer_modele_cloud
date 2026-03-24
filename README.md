@@ -115,6 +115,18 @@ s3://p8-fruits-bs/Results/   -> 24 fichiers Parquet Snappy (92 MB)
 Region : eu-west-3 Paris
 ```
 
+## Démo locale
+```bash
+conda activate p8
+cd C:\Users\steph\projet_p8
+set HADOOP_HOME=C:\hadoop
+set PATH=%PATH%;C:\hadoop\bin
+set PYSPARK_PYTHON=C:\Users\steph\anaconda3\envs\p8\python.exe
+set PYSPARK_DRIVER_PYTHON=C:\Users\steph\anaconda3\envs\p8\python.exe
+python P8_Fruits_Local_Demo.py
+```
+
+Résultat : 494 images · PCA 88,3% · export Parquet ✅
 ---
 
 ## Projet précédent
