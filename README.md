@@ -1,134 +1,164 @@
-# Déployez un modèle dans le cloud — Projet 8
+# 🚀 Pipeline Big Data dans le cloud — AWS EMR
 
-**OpenClassrooms · Data Scientist · Mars 2026**  
-**Auteur : Stéphane BARRÉ**
-
----
-
-## Objectif
-
-Mettre en place une chaîne de traitement Big Data dans le cloud AWS pour extraire les features de 22 688 images de fruits, en vue d'alimenter un futur modèle de classification.
-
-La start-up **Fruits!** souhaite développer une application mobile de reconnaissance de fruits. Ce projet en constitue la première brique technique.
+![Python](https://img.shields.io/badge/Python-3.8-blue?logo=python)
+![PySpark](https://img.shields.io/badge/PySpark-3.x-orange?logo=apachespark)
+![AWS EMR](https://img.shields.io/badge/AWS-EMR-yellow?logo=amazonaws)
+![TensorFlow](https://img.shields.io/badge/TensorFlow-2.11-orange?logo=tensorflow)
+![Status](https://img.shields.io/badge/Status-Completed-brightgreen)
+![RGPD](https://img.shields.io/badge/RGPD-Compliant-blue)
 
 ---
 
-## Résultats clés
+## 🎯 Objectif
 
-| Métrique | Valeur |
-|---|---|
+Concevoir et déployer un **pipeline Big Data distribué en production** pour l'extraction de features visuelles à grande échelle, en vue d'un futur moteur de classification de fruits.
+
+Le pipeline traite **22 688 images** sur un cluster AWS EMR, extrait des features via **MobileNetV2**, réduit la dimensionnalité par **PCA**, et stocke les résultats en **Parquet sur S3**.
+
+---
+
+## 📊 Résultats
+
+| Indicateur | Valeur |
+|-----------|--------|
 | Images traitées | 22 688 |
-| Classes de fruits | 131 |
-| Features par image (MobileNetV2) | 1 280 |
+| Features extraites (MobileNetV2) | 1 280 par image |
 | Composantes PCA retenues | 50 |
 | Variance expliquée | 83,7 % |
-| Taille sortie Parquet | 92 MB |
-| Région AWS | eu-west-3 Paris (RGPD) |
-| Cluster EMR | j-10D17Y4KI6SBM |
-| Step | s-00367443M91CBHEI65G8 — COMPLETED |
+| Fichiers Parquet produits | 24 + 1 `_SUCCESS` |
+| Durée d'exécution (EMR) | ~19 min |
+| Région AWS | eu-west-3 (Paris) — RGPD ✅ |
 
 ---
 
-## Architecture AWS
+## 🏗️ Architecture du pipeline
 
 ```
-IAM (p8-user + rôles EMR)
-    |
-    v
-S3 (s3://p8-fruits-bs/)
-    ├── /Test/      -> 22 688 images JPG sources
-    ├── /scripts/   -> bootstrap.sh + P8_Fruits_Cloud_v2.py
-    ├── /logs/      -> journaux EMR
-    └── /Results/   -> 92 MB Parquet Snappy (sortie PCA)
-    |
-    v
-EMR (emr-6.15.0 · Spark 3.4.1 · 2x m5.xlarge · eu-west-3)
-```
-
----
-
-## Pipeline PySpark — 7 étapes
-
-```
-1. binaryFile      -> chargement images depuis S3
-2. Label           -> extraction classe depuis chemin (element_at)
-3. Broadcast       -> diffusion poids MobileNetV2 (14 MB x 1)  *
-4. Pandas UDF      -> featurisation SCALAR_ITER (1 280 features)
-5. StandardScaler  -> normalisation µ=0, σ=1
-6. PCA k=50        -> réduction 1 280 -> 50 dims (83,7 % variance)
-7. write.parquet   -> export 92 MB sur S3 (lazy evaluation)
-```
-
-\* Elément ajouté par rapport au notebook de l'alternant
-
----
-
-## Points techniques
-
-- **Broadcast des poids** : le driver charge MobileNetV2 une seule fois (~14 MB) et distribue à tous les workers via réseau local. Sans broadcast : N x 14 MB de trafic réseau.
-- **Pandas UDF SCALAR_ITER** : le modèle est chargé une seule fois par worker (pas par image). Optimal pour le Deep Learning distribué.
-- **repartition(24)** : surprovisionnement ~3 partitions/coeur physique. Anti-bottleneck.
-- **StandardScaler obligatoire avant PCA** : MobileNetV2 produit des features d'échelles très différentes. Sans normalisation, la PCA est biaisée.
-- **PCA k optimal** : recherche automatique du premier k depassant 80 % de variance. k=40 -> 79,4 % (insuffisant). k=50 -> 83,7 % (retenu).
-- **RGPD** : eu-west-3 Paris. Données jamais hors d'Europe.
-
----
-
-## Configuration EMR
-
-```
-Version     : emr-6.15.0
-Spark       : 3.4.1
-Hadoop      : 3.3.6
-Instances   : 2x m5.xlarge (4 vCPU, 16 GB RAM chacune)
-Region      : eu-west-3 Paris
-Bootstrap   : tensorflow-cpu==2.11.0 + pandas + pillow + pyarrow + urllib3<2.0
+S3 (images Fruits-360)
+        │
+        ▼
+  Chargement PySpark
+  (SparkContext + S3)
+        │
+        ▼
+  Extraction features
+  MobileNetV2 (Broadcast)
+  via Pandas UDF
+        │
+        ▼
+  Matérialisation Parquet
+  (évite timeout socket)
+        │
+        ▼
+  StandardScaler
+        │
+        ▼
+  PCA k=50
+  (83,7% variance)
+        │
+        ▼
+  Résultats Parquet → S3
 ```
 
 ---
 
-## Livrables
+## ⚙️ Stack technique
 
-| Fichier | Description |
-|---|---|
-| `Barre_Stephane_1_notebook_032026.ipynb` | Pipeline complet local + cloud avec outputs |
-| `P8_Fruits_Cloud_v2.py` | Script spark-submit production |
+| Composant | Technologie |
+|-----------|------------|
+| Traitement distribué | PySpark 3.x |
+| Feature extraction | TensorFlow 2.11 · MobileNetV2 |
+| Réduction dimensionnalité | PCA (Spark MLlib) |
+| Normalisation | StandardScaler (Spark MLlib) |
+| Stockage | AWS S3 · Format Parquet |
+| Infrastructure | AWS EMR (eu-west-3) |
+| Sérialisation modèle | Broadcast Variable |
+| UDF | Pandas UDF |
 
 ---
 
-## Structure du repo
+## 🔑 Choix techniques clés
+
+**MobileNetV2 via Broadcast Variable**
+Le modèle est sérialisé et distribué à chaque nœud du cluster via une Broadcast Variable — évite le rechargement du modèle à chaque appel et optimise les performances réseau.
+
+**Matérialisation intermédiaire**
+Les features extraites sont écrites en Parquet avant l'étape StandardScaler — indispensable pour éviter les timeouts socket liés à la durée d'inférence MobileNetV2.
+
+**Conformité RGPD**
+Cluster déployé en région `eu-west-3` (Paris) — toutes les données restent sur le territoire européen.
+
+---
+
+## 🗂️ Structure du projet
 
 ```
 OC_DS_P8_Deployer_modele_cloud/
-├── README.md
-├── Barre_Stephane_1_notebook_032026.ipynb
-└── P8_Fruits_Cloud_v2.py
+│
+├── notebooks/
+│   └── P8_Pipeline_EMR.ipynb        # Exploration et développement
+│
+├── src/
+│   └── P8_Fruits_Pipeline_EMR.py    # Script de production (EMR)
+│   └── P8_Fruits_Local_Demo.py      # Démo locale (validation)
+│
+├── docs/
+│   └── procedure_AWS_EMR.pdf        # Procédure de déploiement
+│   └── notes_methodologiques.md     # Choix techniques documentés
+│
+└── README.md
 ```
 
 ---
 
-## Accès S3 (lecture)
+## 🚀 Déploiement AWS EMR
 
-Les résultats sont disponibles dans le bucket S3 :
-```
-s3://p8-fruits-bs/Results/   -> 24 fichiers Parquet Snappy (92 MB)
-Region : eu-west-3 Paris
-```
+### Prérequis
+- Compte AWS avec rôle EMR approprié
+- Bucket S3 configuré
+- Cluster EMR avec bootstrap TensorFlow
 
-## Démo locale
+### Lancement
 ```bash
-conda activate p8
-cd C:\Users\steph\projet_p8
+# Via AWS Console — Cloner le cluster existant
+# Cluster configuré : EMR 6.x · m5.xlarge · 3 nœuds
+# Step : spark-submit P8_Fruits_Pipeline_EMR.py
+```
+
+### Variables d'environnement
+```python
+PATH_Data   = "s3://votre-bucket/Test"
+PATH_Result = "s3://votre-bucket/Results"
+```
+
+---
+
+## 💻 Démo locale
+
+```bash
+# Configurer l'environnement
 set HADOOP_HOME=C:\hadoop
-set PATH=%PATH%;C:\hadoop\bin
-set PYSPARK_PYTHON=C:\Users\steph\anaconda3\envs\p8\python.exe
-set PYSPARK_DRIVER_PYTHON=C:\Users\steph\anaconda3\envs\p8\python.exe
+set PYSPARK_PYTHON=<path_to_python>
+
+# Lancer la démo
 python P8_Fruits_Local_Demo.py
 ```
 
-Résultat : 494 images · PCA 88,3% · export Parquet ✅
+Résultat attendu : 494 lignes · 4 colonnes · ~88% variance expliquée (5 classes locales vs 131 en cloud)
+
 ---
 
-## Projet précédent
+## 📚 Formation
 
-[Projet 7 — Scoring Credit](https://github.com/stephanebarre13-boop/Barre_Stephane_P7)
+Projet réalisé dans le cadre de la formation **Data Scientist** — [OpenClassrooms](https://openclassrooms.com)
+Accréditation universitaire **WSCUC** (Western Association of Schools and Colleges — USA) · Niveau Master / Bac+5
+
+---
+
+## 👤 Auteur
+
+**Stéphane Barré**
+Data Scientist | PySpark · AWS · ML · NLP | Double profil Ingénieur · Data Scientist
+
+[![LinkedIn](https://img.shields.io/badge/LinkedIn-stephane--barre--data-blue?logo=linkedin)](https://www.linkedin.com/in/stephane-barre-data)
+[![GitHub](https://img.shields.io/badge/GitHub-stephanebarre13--boop-black?logo=github)](https://github.com/stephanebarre13-boop)
